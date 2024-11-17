@@ -2,52 +2,54 @@ use crate::ast::{ChangeLog, Task, TaskGroup, TaskId, VersionGroup};
 use core::str;
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_until, take_until1, take_while},
+    bytes::complete::{tag, take_until1, take_while},
     character::complete::{char, u32},
     combinator::rest,
-    error::{Error, ParseError},
     multi::{many1, separated_list0},
-    sequence::{delimited, pair, preceded, separated_pair, terminated},
+    sequence::{delimited, preceded, separated_pair, terminated},
     IResult,
 };
-use nom_locate::{position, LocatedSpan};
+use nom_locate::LocatedSpan;
 type Span<'a> = LocatedSpan<&'a str>;
 
-fn take_until_newline(input: &str) -> IResult<&str, &str> {
+fn take_until_newline(input: Span) -> IResult<Span, Span> {
     terminated(take_until1("\n"), tag("\n"))(input)
 }
 
-fn take_until_newline_or_eof(input: &str) -> IResult<&str, &str> {
+fn take_until_newline_or_eof(input: Span) -> IResult<Span, Span> {
     alt((take_until_newline, rest))(input)
 }
 
-fn uppercase_char<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
+fn uppercase_char(input: Span) -> IResult<Span, Span> {
     let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    take_while(move |c| chars.contains(c))(i)
+    take_while(move |c| chars.contains(c))(input)
 }
 
-fn parse_task_id(input: &str) -> IResult<&str, TaskId> {
+fn parse_task_id(input: Span) -> IResult<Span, TaskId> {
+    println!("parse task_id, {:?}", input);
     let (remaining, (project, number)) = separated_pair(uppercase_char, char('-'), u32)(input)?;
     IResult::Ok((
         remaining,
         TaskId {
-            project: String::from(project),
+            project: project.to_string(),
             number,
         },
     ))
 }
 
-fn parse_task_sub_list(input: &str) -> IResult<&str, Vec<String>> {
+fn parse_task_sub_list(input: Span) -> IResult<Span, Vec<String>> {
+    println!("parse task_sub_list, {:?}", input);
     let parse_sub_list_row = preceded(tag("  - "), take_until_newline_or_eof);
 
     let mut parse_sub_list = many1(parse_sub_list_row);
 
     let (remaining, sub_list) = parse_sub_list(input)?;
-    let sub_list = sub_list.iter().map(|&s| s.into()).collect();
+    let sub_list = sub_list.iter().map(|&s| s.to_string()).collect();
     IResult::Ok((remaining, sub_list))
 }
 
-fn parse_task_group_entry(input: &str) -> IResult<&str, Task> {
+fn parse_task_group_entry(input: Span) -> IResult<Span, Task> {
+    println!("parse task_group_entry, {:?}", input);
     let mut parse_task_link = delimited(char('['), parse_task_id, char(']'));
     let mut parse_task_link = preceded(tag("- "), parse_task_link);
     let mut parse_task_link = terminated(parse_task_link, char(' '));
@@ -65,13 +67,14 @@ fn parse_task_group_entry(input: &str) -> IResult<&str, Task> {
         remaining,
         Task {
             id: task_id,
-            description: String::from(task_body),
+            description: task_body.to_string(),
             sub_list: sub_list,
         },
     ))
 }
 
-fn parse_task_group(input: &str) -> IResult<&str, TaskGroup> {
+fn parse_task_group(input: Span) -> IResult<Span, TaskGroup> {
+    println!("parse task_group, {:?}", input);
     // ### header
     let mut parse_task_group_header = preceded(tag("### "), take_until_newline);
     let (remaining, header) = parse_task_group_header(input)?;
@@ -84,13 +87,14 @@ fn parse_task_group(input: &str) -> IResult<&str, TaskGroup> {
     IResult::Ok((
         remaining,
         TaskGroup {
-            header: String::from(header),
+            header: header.to_string(),
             entries: task_group_entries,
         },
     ))
 }
 
-fn parse_version_group(input: &str) -> IResult<&str, VersionGroup> {
+fn parse_version_group(input: Span) -> IResult<Span, VersionGroup> {
+    println!("parse version_group, {:?}", input);
     // ## versiion
     let mut parse_version = preceded(tag("## "), take_until_newline);
     let (remaining, version_str) = parse_version(input)?;
@@ -101,13 +105,14 @@ fn parse_version_group(input: &str) -> IResult<&str, VersionGroup> {
     IResult::Ok((
         remaining,
         VersionGroup {
-            version: String::from(version_str),
+            version: version_str.to_string(),
             task_groups: task_groups,
         },
     ))
 }
 
-pub fn parse_changelog(input: &str) -> IResult<&str, ChangeLog> {
+pub fn parse_changelog(input: &str) -> IResult<Span, ChangeLog> {
+    let input = Span::from(input);
     // # Header
     let mut parse_header = preceded(tag("# "), take_until_newline);
     let (remaining, header) = parse_header(input)?;
@@ -122,7 +127,7 @@ pub fn parse_changelog(input: &str) -> IResult<&str, ChangeLog> {
     IResult::Ok((
         remaining,
         ChangeLog {
-            header: String::from(header),
+            header: header.to_string(),
             versions: version_groups,
         },
     ))
