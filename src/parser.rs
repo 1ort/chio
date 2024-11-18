@@ -1,15 +1,15 @@
-use crate::ast::{ChangeLog, Task, TaskGroup, TaskId, VersionGroup};
-use core::str;
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_until1, take_while},
+    bytes::complete::{tag, take_until, take_until1, take_while},
     character::complete::{char, u32},
-    combinator::rest,
-    multi::{many1, separated_list0},
+    combinator::{peek, rest},
+    multi::{many1, many_till, separated_list0},
     sequence::{delimited, preceded, separated_pair, terminated},
     IResult,
 };
 use nom_locate::LocatedSpan;
+
+use crate::ast::{ChangeLog, Task, TaskGroup, TaskId, VersionGroup};
 type Span<'a> = LocatedSpan<&'a str>;
 
 fn take_until_newline(input: Span) -> IResult<Span, Span> {
@@ -68,7 +68,7 @@ fn parse_task_group_entry(input: Span) -> IResult<Span, Task> {
         Task {
             id: task_id,
             description: task_body.to_string(),
-            sub_list: sub_list,
+            sub_list,
         },
     ))
 }
@@ -106,7 +106,7 @@ fn parse_version_group(input: Span) -> IResult<Span, VersionGroup> {
         remaining,
         VersionGroup {
             version: version_str.to_string(),
-            task_groups: task_groups,
+            task_groups,
         },
     ))
 }
@@ -118,17 +118,28 @@ pub fn parse_changelog(input: &str) -> IResult<Span, ChangeLog> {
     let (remaining, header) = parse_header(input)?;
 
     // single empty line
-    let (remaining, _) = tag("\n")(remaining)?;
+    //let (remaining, _) = tag("\n")(remaining)?;
 
+    //let mut take_until_next_version = take_until("\n### ");
+    let next_version = peek(tag("\n## "));
+    let mut take_empty_lines_until_next_version = many_till(char('\n'), next_version);
+    let (remaining, spaces_until_next_version) = take_empty_lines_until_next_version(remaining)?;
+    println!("next_version {:?}", remaining);
+    println!("spaces_until_next_version {:?}", spaces_until_next_version);
+
+    let mut split_versions = separated_list0(tag("\n\n\n"), take_until("\n\n\n"));
+    let (remaining, version_groups_raw) = split_versions(remaining)?;
+    println!("remaining: {:#?}", remaining);
+    println!("version_groups_raw: {:#?}", version_groups_raw);
     // list of versions separated by double empty lines
-    let mut parse_versions = separated_list0(tag("\n\n"), parse_version_group);
-    let (remaining, version_groups) = parse_versions(remaining)?;
+    //let mut parse_versions = separated_list0(tag("\n\n\n"), parse_version_group);
+    //let (remaining, version_groups) = parse_versions(remaining)?;
 
     IResult::Ok((
         remaining,
         ChangeLog {
             header: header.to_string(),
-            versions: version_groups,
+            versions: vec![],
         },
     ))
 }

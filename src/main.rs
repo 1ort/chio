@@ -1,5 +1,6 @@
 use std::fs;
 mod ast;
+mod fsm_parser;
 mod parser;
 
 fn main() {
